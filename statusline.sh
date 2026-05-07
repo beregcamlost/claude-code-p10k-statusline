@@ -250,7 +250,7 @@ add_5h() {
     awk -v p="$rate_5h" 'BEGIN{exit !(p>=80)}' && color=$CONFLICT
     local pi
     pi=$(awk -v p="$rate_5h" 'BEGIN{printf "%d", p}')
-    pct_str=" $(F $color)${pi}%$R"
+    pct_str="${DOT}$(F $color)${pi}% used$R"
   fi
   if is_num "$rate_5h_reset"; then
     local remain=$(( rate_5h_reset - now_ts ))
@@ -276,7 +276,7 @@ add_7d() {
     awk -v p="$rate_7d" 'BEGIN{exit !(p>=80)}' && color=$CONFLICT
     local pi
     pi=$(awk -v p="$rate_7d" 'BEGIN{printf "%d", p}')
-    pct_str=" $(F $color)${pi}%$R"
+    pct_str="${DOT}$(F $color)${pi}% used$R"
   fi
   if is_num "$rate_7d_reset"; then
     local remain=$(( rate_7d_reset - now_ts ))
