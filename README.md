@@ -3,7 +3,7 @@
 A [Claude Code](https://claude.com/claude-code) statusline that mirrors the look of your [Powerlevel10k](https://github.com/romkatv/powerlevel10k) prompt — same palette, same icons, same powerline block aesthetic. **Responsive** (adapts to terminal width), **cross-platform** (macOS/Linux/Windows), and works in IDE terminals (VS Code, Zed, JetBrains) via an emoji glyph mode.
 
 ```
-   ~/proj   main @abc1234   ✦ Opus 4.8 · ◔ ██████░░░░ 67% (134k/200k) · ⏳ 2h 15m left · 28% used ·  4d 2h left · 46% used   ⏱ 12m  +803 -319   23:09 
+   ~/proj   main @abc1234   ✦ Opus 4.8 · ◔ ██████░░░░ 67% (134k/200k) · ⏳ 2h 15m left · 28% used ·  4d 2h left · 46% used   ⏱ 12m    23:09 
 ```
 
 The whole line sits inside a `bg=234` block (matching `POWERLEVEL9K_BACKGROUND=234`), separated by powerline thin chevrons (``), and closed with a solid right chevron (``) — exactly like a p10k segment.
@@ -24,7 +24,6 @@ The whole line sits inside a `bg=234` block (matching `POWERLEVEL9K_BACKGROUND=2
 | `⏳ 2h 15m left  28%` | 5h block: time remaining + always-on usage % (red <30 min) |
 | ` 4d 2h left  46%` | 7d block: time remaining + always-on usage % |
 | `⏱ 12m` | Wall-clock session duration |
-| `+803 -319` | Lines added / removed across the session |
 | `23:09` | Realtime clock (HH:MM) |
 
 All segments auto-hide when their data is empty/zero.
@@ -34,7 +33,7 @@ All segments auto-hide when their data is empty/zero.
 The line **adapts to your terminal width** so it never overflows on a laptop screen or a split pane. It reads the width from `$COLUMNS` (which Claude Code exports, v2.1.153+), falling back to `tput cols </dev/tty`, then `stty size`, then `120`. Three tiers collapse the line from the least-important segments inward, and a final width clip guarantees it never wraps:
 
 ```
-WIDE   (≥120)     ~/dev/proj  main @abc1234   ✦ Opus 4.8 ⚡1M · high ✻ · ◔ ██████░░░░ 66% (610k/1M) · ⏳ 2h 15m left · 28% used ·  4d 2h left · 46% used  ⏱ 12m +803 -319  23:09
+WIDE   (≥120)     ~/dev/proj  main @abc1234   ✦ Opus 4.8 ⚡1M · high ✻ · ◔ ██████░░░░ 66% (610k/1M) · ⏳ 2h 15m left · 28% used ·  4d 2h left · 46% used  ⏱ 12m  23:09
 MEDIUM (80–119)   ~/dev/proj  main  ✦ Opus 4.8 ⚡1M · ◔ 66% · ⏳2h15m 28% · 7d 46%
 NARROW (<80)    proj  main  ✦ Opus 4.8 66% 28%/46%
 ```
@@ -65,7 +64,7 @@ export CC_STATUSLINE_GLYPHS=emoji   # 🍎/🐧/🪟, 🏠/📁, 🌿, 📅 — 
 export CC_STATUSLINE_GLYPHS=auto    # emoji when an IDE terminal is detected, nerd otherwise
 ```
 
-Modes: `nerd` (default), `emoji`, `ascii` (plain text, zero special glyphs), `auto`. Set it in that terminal's profile/env (e.g. VS Code `terminal.integrated.env`, or your shell rc).
+Modes: `nerd` (default), `emoji`, `ascii` (plain text, zero special glyphs), `auto`. **`auto`** uses emoji in terminals that usually ship *without* a Nerd Font — VS Code, Zed, JetBrains, and a default **Windows Terminal / PowerShell** (detected via `WT_SESSION`) — and `nerd` everywhere else, including **Warp** (which bundles MesloLGS NF). If you install a Nerd Font in Windows Terminal (the installer does), force the crisp glyphs there with `CC_STATUSLINE_GLYPHS=nerd`. Set it in that terminal's profile/env (e.g. VS Code `terminal.integrated.env`, or your shell rc).
 
 ## Requirements
 
@@ -75,6 +74,24 @@ Modes: `nerd` (default), `emoji`, `ascii` (plain text, zero special glyphs), `au
 - **A Nerd Font v3** is recommended (apple, git branch, calendar, home/folder, powerline glyphs). Without one, set `CC_STATUSLINE_GLYPHS=emoji` (or `auto`). ([https://www.nerdfonts.com/](https://www.nerdfonts.com/))
 
 ## Install
+
+### Quick (script)
+
+**macOS / Linux:**
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/beregcamlost/claude-code-p10k-statusline/main/install.sh | bash
+```
+
+**Windows (PowerShell):**
+
+```powershell
+irm https://raw.githubusercontent.com/beregcamlost/claude-code-p10k-statusline/main/install.ps1 | iex
+```
+
+The installer copies `statusline.sh` to `~/.claude/`, wires up the `statusLine` block in `settings.json`, installs the **MesloLGS NF** Nerd Font, and points Windows Terminal / VS Code / Cursor at it. Every file it touches is backed up first; it supports `--dry-run` (`-DryRun` on Windows), `--no-font`, and `--no-terminal-config`, and it never rewrites a JSON config that contains comments — it prints a manual snippet instead. Flags accept `--ref <branch>` (`-Ref` on Windows) to install from a specific revision.
+
+### Manual
 
 ```bash
 mkdir -p ~/.claude
@@ -121,12 +138,12 @@ Claude Code pipes a JSON event to your `statusLine.command` on stdin. The script
 - `model.id` / `model.display_name`
 - `workspace.current_dir` / `cwd` / `worktree.*`
 - `context_window.used_percentage` / `context_window_size`
-- `cost.total_duration_ms` / `total_lines_added` / `total_lines_removed`
+- `cost.total_duration_ms`
 - `agent.name`, `effort.level`, `thinking.enabled`, `output_style.name`, `vim.mode`
 - `rate_limits.five_hour.{used_percentage,resets_at}`
 - `rate_limits.seven_day.{used_percentage,resets_at}`
 
-All JSON fields are read in a **single `jq` pass** (the values are emitted one-per-line and slurped with `mapfile`), and numeric fields that may arrive as JSON floats (`total_duration_ms`, `resets_at`, line counts) are normalized to integers before any `$(( ))` arithmetic. Git data (branch, SHA, ahead/behind, dirty state, mid-operation flags) is computed fresh per render — branch/oid/ahead/behind/dirty all come from one `git status --porcelain=v2 --branch`, with the stash count read straight from `.git/logs/refs/stash`. Render stays fast even in repos with thousands of changed files.
+All JSON fields are read in a **single `jq` pass** (the values are emitted one-per-line and slurped with `mapfile`), and numeric fields that may arrive as JSON floats (`total_duration_ms`, `resets_at`) are normalized to integers before any `$(( ))` arithmetic. Git data is kept deliberately lightweight: a **pure-bash walk** up the directory tree first looks for a `.git` entry, so outside a repository the script forks no `git` at all; inside one, a **single `git rev-parse`** returns is-inside / git-dir / short SHA, and `git symbolic-ref` resolves the branch (falling back to the SHA when detached). Mid-operation flags (rebase / merge / cherry-pick / revert / bisect) come from cheap file checks in the git dir. Change counts (ahead/behind/staged/dirty/stash) are intentionally omitted, so render stays fast even in huge repos. The clock and timestamps use bash's `printf '%()T'` (no `date` fork on bash 4.2+).
 
 Externally-derived strings (branch, agent, worktree, output-style names) are stripped of control/ESC bytes before rendering, so a crafted name can't inject ANSI sequences into your terminal.
 
