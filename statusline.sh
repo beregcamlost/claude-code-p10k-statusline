@@ -224,6 +224,8 @@ else
   SEP="  "                               # narrow: plain spaces, no glyphs
   DOT=" "
 fi
+# Intra-group spacing (OS->path, path->git): tighter for double-width emoji/ascii glyphs.
+GSEP="  "; [[ $glyphs == emoji || $glyphs == ascii ]] && GSEP=" "
 
 # ---------------- helpers ----------------
 fmt_tok() {
@@ -340,7 +342,7 @@ case $tier in
 esac
 if [[ $pcontext != none ]]; then
   if [[ $pcontext == home ]]; then picon=$ICN_HOME; picolor=$CANCHOR; else picon=$ICN_FOLDER; picolor=$CDIR; fi
-  psep=""; [[ -n $gA ]] && psep="  "
+  psep=""; [[ -n $gA ]] && psep="$GSEP"
   seg="$psep"
   [[ -n $picon ]] && seg+="${picolor}${picon}$R "
   if [[ -n $ppath ]]; then
@@ -380,7 +382,7 @@ if [[ -n $cwd ]]; then
 fi
 
 if (( in_repo )); then
-  gsp=""; [[ -n $gA ]] && gsp="  "
+  gsp=""; [[ -n $gA ]] && gsp="$GSEP"
   gA+="${gsp}${CCLEAN}${ICN_GIT}${ICN_GIT:+ }${branch}$R"
   (( tier >= 3 )) && [[ -n $sha && $sha != "$branch" ]] && gA+=" ${CDIM}${ICN_AT}${sha}$R"
   [[ -n $git_op ]] && gA+=" ${CCONF}$B${git_op}$R"        # mid-operation: shown at all tiers
