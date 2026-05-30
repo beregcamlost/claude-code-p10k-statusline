@@ -105,7 +105,7 @@ cwd=${cwd//$'\r'/}   # strip a stray CR (CRLF-edited config)
 #   C:\Users\me\repo -> /c/Users/me/repo  (to match $HOME, e.g. /c/Users/me).
 cwd=${cwd//\\//}
 [[ $cwd =~ ^([A-Za-z]):/ ]] && cwd="/${BASH_REMATCH[1],,}/${cwd:3}"
-nhome=${HOME//\\//}
+nhome=${HOME:-${USERPROFILE:-}}; nhome=${nhome//\\//}   # USERPROFILE: Git-bash may leave HOME unset
 [[ $nhome =~ ^([A-Za-z]):/ ]] && nhome="/${BASH_REMATCH[1],,}/${nhome:3}"
 
 # ---------------- ANSI ----------------
@@ -131,17 +131,22 @@ COS="${e}[38;5;${OS}m";         CDIM="${e}[38;5;${DIM}m";       CSUBSEP="${e}[38
 C234="${e}[38;5;234m"
 
 # ---------------- glyph set: nerd | emoji | ascii | auto ----------------
-# Custom IDE terminals (VS Code, Zed, JetBrains / Android Studio) frequently run
-# WITHOUT a Nerd Font, so Private-Use glyphs render as tofu boxes. 'emoji' swaps
-# them for system emoji (drawn by the OS emoji font — no special terminal font
-# needed); 'ascii' uses plain text; 'auto' detects known IDE terminals and uses
-# emoji there, nerd elsewhere. Nerd-mode PUA glyphs are byte-escaped (\xHH UTF-8)
-# so they survive any editor/encoding round-trip.
-glyphs=${CC_STATUSLINE_GLYPHS:-nerd}
+# Custom IDE terminals (VS Code, Zed, JetBrains / Android Studio) and a DEFAULT
+# Windows Terminal / PowerShell frequently run WITHOUT a Nerd Font, so Private-Use
+# glyphs render as tofu boxes. 'emoji' swaps them for system emoji (drawn by the OS
+# emoji font — no special terminal font needed); 'ascii' uses plain text; 'auto'
+# detects those terminals and uses emoji there, nerd elsewhere. Nerd-mode PUA glyphs
+# are byte-escaped (\xHH UTF-8) so they survive any editor/encoding round-trip.
+glyphs=${CC_STATUSLINE_GLYPHS:-nerd}   # Warp ships MesloLGS NF -> crisp monochrome p10k glyphs
 if [[ $glyphs == auto ]]; then
+  # WT_SESSION / WT_PROFILE_ID => Microsoft Windows Terminal (its default Cascadia Mono
+  # has no Nerd glyphs). If you DID install a Nerd Font there, set CC_STATUSLINE_GLYPHS=nerd
+  # explicitly (install.ps1 does this for you). Warp sets TERM_PROGRAM=WarpTerminal (not a
+  # WT_ var) and bundles a Nerd Font, so it correctly stays on 'nerd' via the else branch.
   if [[ ${TERM_PROGRAM:-} == vscode || ${TERM_PROGRAM:-} == zed \
      || ${TERMINAL_EMULATOR:-} == *JetBrains* \
-     || -n ${ZED_TERM:-} || -n ${__INTELLIJ_COMMAND_HISTFILE__:-} ]]; then
+     || -n ${ZED_TERM:-} || -n ${__INTELLIJ_COMMAND_HISTFILE__:-} \
+     || -n ${WT_SESSION:-} || -n ${WT_PROFILE_ID:-} ]]; then
     glyphs=emoji
   else
     glyphs=nerd
@@ -311,7 +316,11 @@ clip_visible() {
   printf '%s…' "$out"
 }
 
-now_ts=$(date +%s)
+# Fork-free epoch + clock via bash 4.2+ printf '%()T' (saves two date(1) forks/render);
+# fall back to date(1) on bash 4.0/4.1, which lack the time format.
+HAVE_PRINTF_TIME=0
+(( BASH_VERSINFO[0] > 4 || ( BASH_VERSINFO[0] == 4 && BASH_VERSINFO[1] >= 2 ) )) && HAVE_PRINTF_TIME=1
+if (( HAVE_PRINTF_TIME )); then printf -v now_ts '%(%s)T' -1; else now_ts=$(date +%s); fi
 
 # ==================================================================
 # Segments are built into four groups joined by SEP:
@@ -362,13 +371,31 @@ fi
 # ---------------- git: branch + mid-operation flag (+ @sha at WIDE) ----------------
 # Change counts (ahead/behind/staged/unstaged/untracked/stash) intentionally omitted.
 in_repo=0; branch=""; sha=""; git_op=""; git_dir=""
-if [[ -n $cwd ]]; then
-  mapfile -t _g < <(git -C "$cwd" rev-parse --is-inside-work-tree --git-dir 2>/dev/null)
+# Pure-bash pre-check: only fork git when a .git entry exists at cwd or an ancestor.
+# Walking parents in-shell costs nothing and skips a ~50ms git fork on Windows when we
+# are not in a repo at all (e.g. $HOME). A .git *file* (worktrees/submodules) counts too;
+# the git rev-parse below remains the authority on actual repo membership.
+_maybe_repo=0
+if [[ -n ${GIT_DIR:-} ]]; then
+  _maybe_repo=1                          # explicit GIT_DIR in env: trust git (old always-fork behavior)
+elif [[ -n $cwd ]]; then
+  _p="$cwd"
+  while [[ -n $_p ]]; do
+    [[ -e $_p/.git ]] && { _maybe_repo=1; break; }
+    [[ $_p == */* ]] || break
+    _p="${_p%/*}"
+  done
+  [[ $_maybe_repo == 0 && -e /.git ]] && _maybe_repo=1   # repo rooted at '/' (cheap, defensive)
+fi
+if (( _maybe_repo )); then
+  # One fork covers is-inside-work-tree + git-dir + short sha (was 2 calls); branch stays
+  # a second fork via symbolic-ref (cleanly handles unborn + detached HEAD).
+  mapfile -t _g < <(git -C "$cwd" rev-parse --is-inside-work-tree --git-dir --short=7 HEAD 2>/dev/null)
   if [[ ${_g[0]} == "true" ]]; then
     in_repo=1
     git_dir=${_g[1]}; [[ -n $git_dir && $git_dir != /* ]] && git_dir="$cwd/$git_dir"
+    sha=${_g[2]}; [[ $sha =~ ^[0-9a-fA-F]{7,40}$ ]] || sha=""   # empty repo: HEAD unresolved -> no sha
     branch=$(git -C "$cwd" symbolic-ref --short -q HEAD 2>/dev/null)
-    sha=$(git -C "$cwd" rev-parse --short=7 HEAD 2>/dev/null)
     [[ -z $branch ]] && branch=$sha          # detached HEAD -> short sha
     strip_ctl branch
     if [[ -n $git_dir ]]; then
@@ -408,20 +435,27 @@ fi
 
 # ---------------- agent (+ duration via per-session state file) ----------------
 if [[ -n $agent_name ]] && (( tier >= 2 )); then
-  state_dir="${TMPDIR:-/tmp}/claude-statusline-${USER:-$(id -u 2>/dev/null)}"
+  # Prefer TMPDIR; fall back to ~/.claude (reliably writable on Windows Git-bash where
+  # /tmp may not exist). If neither is writable, skip persistence (agent shows w/o timer).
+  _sbase="${TMPDIR:-}"; [[ -n $_sbase && -d $_sbase ]] || _sbase="${HOME:-${USERPROFILE:-/tmp}}/.claude"
+  state_dir="${_sbase//\\//}/claude-statusline-${USER:-$(id -u 2>/dev/null)}"
   (umask 077; mkdir -p "$state_dir" 2>/dev/null)        # private: 0700, not world-readable
-  find "$state_dir" -type f -mtime +1 -delete 2>/dev/null
-  agent_state_file="$state_dir/${session_id:-default}.agent"
+  [[ -w $state_dir ]] || state_dir=""
   start_ts=$now_ts
-  if [[ -r $agent_state_file ]]; then
-    IFS=: read -r prev_name prev_ts < "$agent_state_file"
-    if [[ $prev_name == "$agent_name" ]] && is_num "$prev_ts"; then
-      start_ts=$prev_ts
+  if [[ -n $state_dir ]]; then
+    agent_state_file="$state_dir/${session_id:-default}.agent"
+    if [[ -r $agent_state_file ]]; then
+      IFS=: read -r prev_name prev_ts < "$agent_state_file"
+      if [[ $prev_name == "$agent_name" ]] && is_num "$prev_ts"; then
+        start_ts=$prev_ts
+      else
+        find "$state_dir" -type f -mtime +1 -delete 2>/dev/null   # prune only when (re)writing
+        printf '%s:%s\n' "$agent_name" "$start_ts" > "$agent_state_file"
+      fi
     else
+      find "$state_dir" -type f -mtime +1 -delete 2>/dev/null     # prune only on first write
       printf '%s:%s\n' "$agent_name" "$start_ts" > "$agent_state_file"
     fi
-  else
-    printf '%s:%s\n' "$agent_name" "$start_ts" > "$agent_state_file"
   fi
   if (( tier >= 3 )); then
     agent_dur=$(fmt_dur_short "$(( now_ts - start_ts ))")
@@ -515,30 +549,17 @@ else
   [[ -n $combo ]] && { bdot; gB+="$combo"; }
 fi
 
-# ---------------- session telemetry: wall-clock + lines diff (tier 3 only) ----------------
-if (( tier >= 3 )); then
-  have_wall=0
-  if is_num "$wall_ms" && (( wall_ms >= 60000 )); then have_wall=1; fi
-  have_diff=0
-  { is_num "$lines_added"   && (( lines_added   > 0 )); } && have_diff=1
-  { is_num "$lines_removed" && (( lines_removed > 0 )); } && have_diff=1
-  if (( have_wall || have_diff )); then
-    if (( have_wall )); then
-      gC+="${CDIM}${ICN_CLOCK} $(fmt_dur_short "$(( wall_ms/1000 ))")$R"
-    fi
-    if (( have_diff )); then
-      (( have_wall )) && gC+=" "
-      if is_num "$lines_added" && (( lines_added > 0 )); then gC+="${CCLEAN}+${lines_added}$R"; fi
-      if is_num "$lines_removed" && (( lines_removed > 0 )); then
-        { is_num "$lines_added" && (( lines_added > 0 )); } && gC+=" "
-        gC+="${CCONF}-${lines_removed}$R"
-      fi
-    fi
-  fi
+# ---------------- session telemetry: wall-clock (tier 3 only) ----------------
+# Lines +added/-removed intentionally omitted — no at-a-glance value (per Beren).
+if (( tier >= 3 )) && is_num "$wall_ms" && (( wall_ms >= 60000 )); then
+  gC+="${CDIM}${ICN_CLOCK} $(fmt_dur_short "$(( wall_ms/1000 ))")$R"
 fi
 
 # ---------------- realtime clock (tier 3 only) ----------------
-(( tier >= 3 )) && gD="${CDIM}$(date +%H:%M)$R"
+if (( tier >= 3 )); then
+  if (( HAVE_PRINTF_TIME )); then printf -v _clock '%(%H:%M)T' "$now_ts"; else _clock=$(date +%H:%M); fi
+  gD="${CDIM}${_clock}$R"
+fi
 
 # ---------------- assemble + clip to terminal width ----------------
 budget=$(( cols - 2 )); (( budget < 10 )) && budget=10   # reserve trailing space + chevron
