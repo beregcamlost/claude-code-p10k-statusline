@@ -224,8 +224,13 @@ else
   SEP="  "                               # narrow: plain spaces, no glyphs
   DOT=" "
 fi
-# Intra-group spacing (OS->path, path->git): tighter for double-width emoji/ascii glyphs.
-GSEP="  "; [[ $glyphs == emoji || $glyphs == ascii ]] && GSEP=" "
+# Intra-group spacing. Emoji are double-width with built-in padding, so the OS->path
+# gap (icon->icon) collapses to zero; path->git keeps one space (text->glyph).
+GSEP="  "; OSEP="  "
+case $glyphs in
+  emoji) GSEP=" "; OSEP="" ;;
+  ascii) GSEP=" "; OSEP=" " ;;
+esac
 
 # ---------------- helpers ----------------
 fmt_tok() {
@@ -342,7 +347,7 @@ case $tier in
 esac
 if [[ $pcontext != none ]]; then
   if [[ $pcontext == home ]]; then picon=$ICN_HOME; picolor=$CANCHOR; else picon=$ICN_FOLDER; picolor=$CDIR; fi
-  psep=""; [[ -n $gA ]] && psep="$GSEP"
+  psep=""; [[ -n $gA ]] && psep="$OSEP"
   seg="$psep"
   [[ -n $picon ]] && seg+="${picolor}${picon}$R "
   if [[ -n $ppath ]]; then
