@@ -68,7 +68,7 @@ Modes: `nerd` (default), `emoji`, `ascii` (plain text, zero special glyphs), `au
 
 ## Requirements
 
-- **bash 4+** (uses `mapfile`). macOS ships bash 3.2; install bash 5 via Homebrew: `brew install bash`.
+- **bash 4+ available** (uses `mapfile`). macOS ships bash 3.2 by default; install bash 5 with `brew install bash`. It need **not** be your default shell — when launched under an older bash, the script auto-re-execs under a newer one (`/opt/homebrew/bin/bash`, `/usr/local/bin/bash`, or `/usr/bin/bash`).
 - **jq** — JSON parsing. `brew install jq`.
 - **A 256-color terminal** (any modern one).
 - **A Nerd Font v3** is recommended (apple, git branch, calendar, home/folder, powerline glyphs). Without one, set `CC_STATUSLINE_GLYPHS=emoji` (or `auto`). ([https://www.nerdfonts.com/](https://www.nerdfonts.com/))

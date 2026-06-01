@@ -29,6 +29,13 @@
 # Requirements: bash 4+ (mapfile), jq, a 256-color terminal. A Nerd Font v3 is
 # recommended; without one set CC_STATUSLINE_GLYPHS=emoji (or auto).
 
+# bash 4+ required (mapfile). macOS default /bin/bash is 3.2 → re-exec under a newer bash if present.
+if [ "${BASH_VERSINFO:-0}" -lt 4 ]; then
+  for _b in /opt/homebrew/bin/bash /usr/local/bin/bash /usr/bin/bash; do
+    [ -x "$_b" ] && exec "$_b" "$0" "$@"
+  done
+fi
+
 set +e
 input=$(cat)
 
